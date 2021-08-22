@@ -1,0 +1,94 @@
+name: Run tests
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+  pull_request:
+    branches:
+      - main
+      - staging
+
+jobs:
+  testing:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [14.x]
+        mongodb-version: [4.0]
+
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v2
+
+      - name: Checkout codemonks
+        uses: actions/checkout@v2
+        with:
+          repository: DomnicAmalan/codemonks
+          ssh-key: ${{ secrets.STORE_API_USER }} # `GitHub_PAT` is a secret that contains your PAT
+          path: codemonks
+          
+  deploy_production:
+    runs-on: ubuntu-18.04
+    needs: testing
+
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        ruby: [2.7.3]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Create SSH key
+        run: |
+          mkdir -p ~/.ssh/
+          echo "$DEPLOY_USER_PRIVATE_KEY" > ~/.ssh/id_rsa
+          sudo chmod 400 ~/.ssh/id_rsa
+          ssh-keyscan -H 3.109.169.1 > ~/.ssh/known_hosts
+        shell: bash
+        env:
+          DEPLOY_USER_PRIVATE_KEY: ${{secrets.DEPLOY_USER_PRIVATE_KEY}}
+
+      - name: Set up Ruby ${{ matrix.ruby }}
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: cap deploy over ssh - Production
+        run: |
+          gem install bundler:1.17.3
+          bundle install
+          bundle exec cap production deploy
+  deploy_staging:
+    runs-on: ubuntu-18.04
+    needs: testing
+
+    if: github.ref == 'refs/heads/staging'
+    strategy:
+      matrix:
+        ruby: [2.7.3]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Create SSH key
+        run: |
+          mkdir -p ~/.ssh/
+          echo "$DEPLOY_USER_PRIVATE_KEY" > ~/.ssh/id_rsa
+          sudo chmod 400 ~/.ssh/id_rsa
+          ssh-keyscan -H 3.109.169.1 > ~/.ssh/known_hosts
+        shell: bash
+        env:
+          DEPLOY_USER_PRIVATE_KEY: ${{secrets.DEPLOY_USER_PRIVATE_KEY}}
+
+      - name: Set up Ruby ${{ matrix.ruby }}
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: cap deploy over ssh - staging
+        run: |
+          gem install bundler:1.17.3
+          bundle install
+          bundle exec cap staging deploy
